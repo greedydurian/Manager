@@ -12,8 +12,12 @@
 HINSTANCE hInst;                                // current instance
 WCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
 WCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
-TCHAR g_FilesList[10000];                       // A buffer to hold the filenames, increase size if needed.
+TCHAR g_FilesList[10000];
+HWND hWnd;  // Handle to the main window
+// A buffer to hold the filenames, increase size if needed.
 int g_FilesIndex = 0;                           // Index to keep track of the current position in the buffer
+int g_FileCount = 0;
+const int MAX_FILES = 10;
 
 // Forward declarations of functions included in this code module:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
@@ -23,6 +27,8 @@ INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 
 void EnumerateFiles(const TCHAR* directory)
 {
+    if (g_FileCount >= MAX_FILES) return;  // If we've hit our max, just return immediately
+
     WIN32_FIND_DATA findFileData;
     TCHAR fullPath[1024];
     _stprintf_s(fullPath, sizeof(fullPath) / sizeof(TCHAR), _T("%s\\*.*"), directory);
@@ -43,16 +49,22 @@ void EnumerateFiles(const TCHAR* directory)
                 _stprintf_s(g_FilesList + g_FilesIndex, sizeof(g_FilesList) / sizeof(TCHAR) - g_FilesIndex,
                     _T("%s\\%s\n"), directory, findFileData.cFileName);
                 g_FilesIndex += _tcslen(findFileData.cFileName) + _tcslen(directory) + 2;  // Adjusting for directory, filename, and extra characters
+                g_FileCount++;  // Increment the counter
+
+                if (g_FileCount >= MAX_FILES) break;  // If we've hit our max, break out of the loop
 
                 if (findFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
                 {
-                    EnumerateFiles(findFileData.cFileName);  // Recursive call
+                    TCHAR subDirectory[1024];
+                    _stprintf_s(subDirectory, sizeof(subDirectory) / sizeof(TCHAR), _T("%s\\%s"), directory, findFileData.cFileName);
+                    EnumerateFiles(subDirectory);  // Recursive call
                 }
             }
         } while (FindNextFile(hFind, &findFileData) != 0);
         FindClose(hFind);
     }
 }
+
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,
@@ -74,6 +86,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     {
         return FALSE;
     }
+
+    EnumerateFiles(_T("C:\\"));
+    InvalidateRect(hWnd, NULL, TRUE);
 
     HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_MANAGER));
 
@@ -132,21 +147,23 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 //
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
-   hInst = hInstance; // Store instance handle in our global variable
+    hInst = hInstance; // Store instance handle in our global variable
 
-   HWND hWnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
-      CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, nullptr, nullptr, hInstance, nullptr);
+    hWnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, nullptr, nullptr, hInstance, nullptr);
 
-   if (!hWnd)
-   {
-      return FALSE;
-   }
+    if (!hWnd)
+    {
+        return FALSE;
+    }
 
-   ShowWindow(hWnd, nCmdShow);
-   UpdateWindow(hWnd);
+    ShowWindow(hWnd, nCmdShow);
+    UpdateWindow(hWnd);
 
-   return TRUE;
+    return TRUE;
 }
+
+
 
 //
 //  FUNCTION: WndProc(HWND, UINT, WPARAM, LPARAM)
@@ -180,13 +197,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         }
         break;
     case WM_PAINT:
-        {
-            PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(hWnd, &ps);
-            // TODO: Add any drawing code that uses hdc here...
-            EndPaint(hWnd, &ps);
-        }
-        break;
+    {
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(hWnd, &ps);
+
+        // Draw the list of files.
+        RECT rect;
+        GetClientRect(hWnd, &rect);
+        DrawText(hdc, g_FilesList, -1, &rect, DT_LEFT | DT_TOP);
+
+        EndPaint(hWnd, &ps);
+    }
+    break;
     case WM_DESTROY:
         PostQuitMessage(0);
         break;
